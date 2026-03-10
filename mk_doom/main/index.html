@@ -11,7 +11,8 @@
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="640" height="480"></canvas>
+    <canvas id="gameCanvas" width="1024" height="600"></canvas>
+    <!-- 권장 width=640 , height=480 -->
 
     <py-config>
         [[fetch]]
@@ -19,7 +20,7 @@
     </py-config>
 
     <py-script>
-        import js
+        import js, math
         from pyodide.ffi import create_proxy  # 에러 해결을 위한 핵심 임포트
         from engine import DoomGame, SCREEN_WIDTH, SCREEN_HEIGHT, CASTED_RAYS
 
@@ -113,18 +114,45 @@
             if weapon_img.complete and weapon_img.height > 0:
                 # 발사 시 반동 계산 (flash_frames가 있을 때 위로 이동)
                 recoil = game.flash_frames * 10 
+
+                # --- 뷰 보빙(View Bobbing) 계산 ---
+                # math.sin을 사용하여 위아래로 흔들림 (기본 위치 기준)
+                bob_y = math.sin(game.walk_timer) * 8 
+                # math.cos를 사용하여 양옆으로 흔들림
+                bob_x = math.cos(game.walk_timer * 0.5) * 5
                 
                 # 이미지 크기 설정 (화면 비율에 맞게 조정)
-                w_width = SCREEN_WIDTH * 0.32
+                w_width = SCREEN_WIDTH * 0.256
                 w_height = w_width * (weapon_img.height / weapon_img.width)
                 
                 # 위치 설정: 우측 하단 (반동 시 recoil만큼 Y축 위로 이동)
-                pos_x = SCREEN_WIDTH - w_width - 60
-                pos_y = SCREEN_HEIGHT - w_height + recoil
+                pos_x = (SCREEN_WIDTH - w_width - 150) + bob_x
+                pos_y = (SCREEN_HEIGHT - w_height + 10) + recoil + bob_y
                 
                 ctx.drawImage(weapon_img, pos_x, pos_y, w_width, w_height)
 
-            # 6. 사격 피드백 (화면 번쩍임)
+            # 6. UI 시스템 (좌측 상단)
+            ctx.fillStyle = "white"
+            ctx.font = "20px Arial"
+            ctx.textAlign = "left"
+            
+            # 플레이어 라이프 출력
+            ctx.fillText(f"PLAYER LIFE: {game.player_health}", 20, 30)
+            
+            # 살아있는 몬스터들의 라이프 동적 출력
+            y_offset = 60
+            for i, m in enumerate(game.monsters):
+                if m.is_alive:
+                    ctx.fillText(f"MONSTER {i+1} LIFE: {m.health}", 20, y_offset)
+                    y_offset += 30
+
+            # 7. 피격 효과 (붉은색 번쩍임)
+            if game.damage_frames > 0:
+                ctx.fillStyle = f"rgba(255, 0, 0, {game.damage_frames / 10})"
+                ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+                game.damage_frames -= 1
+            
+            # 8. 사격 피드백 (화면 번쩍임)
             if game.flash_frames > 0:
                 ctx.fillStyle = f"rgba(255, 255, 255, {game.flash_frames / 5})"
                 ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)

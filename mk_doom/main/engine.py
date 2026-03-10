@@ -1,11 +1,19 @@
 import math
 
 # --- 설정 및 상수 ---
-SCREEN_WIDTH = 640
-SCREEN_HEIGHT = 480
+SCREEN_WIDTH = 1024
+SCREEN_HEIGHT = 600
+# 권장 사양 : width=640 , height=480
+
 FOV = math.pi / 3  # 시야각 (60도)
 HALF_FOV = FOV / 2
-CASTED_RAYS = 180  # 광선 개수 (성능에 따라 조절)
+
+CASTED_RAYS = 256  # 광선 개수 (성능에 따라 조절)
+# 권장 사양 : 180
+
+WALL_HEIGHT_FACTOR = 400
+# 해상도의 따라 벽의 높이 보정(초기값 400 -> 600).
+
 STEP_ANGLE = FOV / CASTED_RAYS
 MAX_DEPTH = 800    # 최대 가시 거리
 
@@ -26,24 +34,37 @@ class Monster:
         self.x = x
         self.y = y
         self.is_alive = True
+        self.health = 2  # 몬스터 체력 2
         self.radius = 15  # 몬스터의 물리적 반지름 추가
 
 class DoomGame:
     def __init__(self):
+        self.init_game()
+
+    def init_game(self):
         self.player_x = 100
         self.player_y = 100
         self.player_angle = 0
+        self.player_health = 3  # 플레이어 체력 3
         # 몬스터 목록 추가
         # 몬스터 좌표를 타일 중앙(TILE_SIZE // 2)으로 보정하여 배치
         self.monsters = [
-            Monster(175, 170), # 4번째 타일 근처
-            Monster(320, 80)  # 7번째 타일 근처
+            Monster(175, 170), # 중앙 부근
+            Monster(320, 80),
+            Monster(310, 280),
+            Monster(75, 250) 
         ]
+        self.damage_frames = 0 # 데미지 입었을 때 붉은 효과용
+        self.damage_cooldown = 0 # 연속 데미지 방지 쿨타임
         self.flash_frames = 0  # 여기에 추가
+        self.walk_timer = 0  # 걷는 시간을 기록할 타이머 추가
+        self.game_state = "PLAYING" # PLAYING, GAMEOVER, CLEAR
         
     def update_player(self, keys):
+        if self.game_state != "PLAYING":
+            return
         # 이동 속도와 회전 속도 설정
-        move_speed = 2.5
+        move_speed = 1.12
         rot_speed = 0.08
         
         # 회전 처리 (A, D)
@@ -68,6 +89,40 @@ class DoomGame:
             # Y축 이동 검사
             if self.get_map_at(self.player_x, new_y) == 0:
                 self.player_y = new_y
+
+        # W나 S키를 눌러 이동 중일 때 타이머 증가
+        if 'w' in keys or 's' in keys:
+            self.walk_timer += 0.15  # 흔들림 속도 조절
+        else:
+            # 멈춰 있을 때는 부드럽게 0으로 수렴 (또는 바로 0)
+            self.walk_timer = 0
+
+
+        # 몬스터와의 거리 체크 (근접 데미지)
+        for m in self.monsters:
+            if not m.is_alive: continue
+            dx = m.x - self.player_x
+            dy = m.y - self.player_y
+            dist = math.sqrt(dx**2 + dy**2)
+            
+            # 몬스터와 너무 가까우면 (거리 30 미만)
+            if dist < 30 and self.damage_cooldown == 0:
+                self.player_health -= 1
+                self.damage_frames = 10 # 붉은색 번쩍임
+                self.damage_cooldown = 60 # 약 1초간 무적 (60프레임)
+                if self.player_health <= 0:
+                    print("Game Over") # 콘솔 출력용
+
+        # 데미지 쿨타임 감소
+        if self.damage_cooldown > 0:
+            self.damage_cooldown -= 1
+            
+        if self.player_health <= 0:
+            self.game_state = "GAMEOVER"
+            
+        # 모든 몬스터 처치 시 클리어 상태 전환
+        if all(not m.is_alive for m in self.monsters):
+            self.game_state = "CLEAR"
 
     def get_sprites_data(self):
         """몬스터의 상대적 위치와 거리를 계산하여 HTML로 전달"""
@@ -155,7 +210,7 @@ class DoomGame:
                     if MAP[row][col] == 1:
                         # 어안렌즈 효과 보정된 거리
                         dist = depth * math.cos(self.player_angle - start_angle)
-                        wall_height = (TILE_SIZE * 400) / (dist + 0.0001)
+                        wall_height = (TILE_SIZE * WALL_HEIGHT_FACTOR) / (dist + 0.0001)
                         
                         # 중요: 거리(dist) 정보를 함께 저장합니다.
                         wall_data.append({'height': wall_height, 'dist': dist})
@@ -199,7 +254,9 @@ class DoomGame:
                     target_monster = m
 
         if target_monster:
-            target_monster.is_alive = False
+            target_monster.health -= 1 # 체력 감소
+            if target_monster.health <= 0:
+                target_monster.is_alive = False
             return True # 명중 시 True 반환
         return False
 
