@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Python DOOM Project</title>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+    <style>
+        body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        canvas { border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="640" height="480"></canvas>
+
+    <py-config>
+        [[fetch]]
+        files = ["engine.py"]
+    </py-config>
+
+    <py-script>
+        import js
+        from pyodide.ffi import create_proxy  # 에러 해결을 위한 핵심 임포트
+        from engine import DoomGame, SCREEN_WIDTH, SCREEN_HEIGHT, CASTED_RAYS
+
+        # 1. 이미지 로드 설정
+        monster_img = js.Image.new()
+        monster_img.src = "images/doom_imp.png" # 실제 이미지 파일 경로
+        weapon_img = js.Image.new()
+        weapon_img.src = "images/pistol.png" # 실제 총 이미지 파일 경로
+
+        canvas = js.document.getElementById("gameCanvas")
+        ctx = canvas.getContext("2d")
+        game = DoomGame()
+        pressed_keys = set()
+
+        def on_keydown(event):
+            pressed_keys.add(event.key.lower())
+        def on_keyup(event):
+            if event.key.lower() in pressed_keys:
+                pressed_keys.remove(event.key.lower())
+
+        # 프록시 생성 후 이벤트 리스너 등록
+        js.window.addEventListener("keydown", create_proxy(on_keydown))
+        js.window.addEventListener("keyup", create_proxy(on_keyup))
+
+        def draw_scene():
+            # 1. [가장 밑바닥] 배경 (천장과 바닥)
+            ctx.fillStyle = "#222" # 천장
+            ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT / 2)
+            ctx.fillStyle = "#444" # 바닥
+            ctx.fillRect(0, SCREEN_HEIGHT / 2, SCREEN_WIDTH, SCREEN_HEIGHT / 2)
+
+            # 2. [중간 레이어] 레이캐스팅 벽 그리기 및 거리(Z-Buffer) 기록
+            wall_results = game.cast_rays()
+            z_buffer = [] # 각 광선(Ray)의 거리를 저장
+            ray_width = SCREEN_WIDTH / CASTED_RAYS
+            
+            for i, wall in enumerate(wall_results):
+                wall_height = wall['height']
+                z_buffer.append(wall['dist']) # 거리 저장
+                
+                brightness = int(255 * (1 - min(wall_height / SCREEN_HEIGHT, 1)))
+                ctx.fillStyle = f"rgb({brightness}, {brightness}, {brightness})"
+                ctx.fillRect(i * ray_width, (SCREEN_HEIGHT - wall_height) / 2, ray_width + 1, wall_height)
+
+            # 3. [가장 위 레이어] 몬스터 이미지 렌더링 (가려짐 처리)
+            # 벽이 모두 그려진 후에 그 위에 몬스터를 덧칠합니다.
+            monsters = game.get_sprites_data()
+            for m in monsters:
+                # 이미지 로드가 완료되었고, 높이가 0이 아닐 때만 실행
+                if monster_img.complete and monster_img.height > 0:
+                    m_dist = m['d'] - 0.5
+                    m_x = m['x']
+                    m_h = m['h']
+                    
+                    # 이미지 가로 세로 비율 유지 (보통 몬스터는 높이가 너비보다 큼)
+                    sprite_width = m_h * (monster_img.width / monster_img.height)
+                    start_x = int(m_x - sprite_width / 2)
+                    end_x = int(m_x + sprite_width / 2)
+
+                    # 세로 줄 단위 Z-Buffer 검사
+                    for stripe in range(start_x, end_x):
+                        ray_idx = int(stripe / (SCREEN_WIDTH / CASTED_RAYS))
+                        if 0 <= ray_idx < len(z_buffer):
+                            if z_buffer[ray_idx] > m_dist:
+                                # 이미지의 특정 부분만 잘라서 캔버스에 그리기
+                                # drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+                                src_x = (stripe - start_x) * (monster_img.width / sprite_width)
+                                
+                                ctx.drawImage(
+                                    monster_img,
+                                    src_x, 0, 1, monster_img.height, # 원본 이미지 소스 (1픽셀 폭)
+                                    stripe, (SCREEN_HEIGHT - m_h) / 2, 1, m_h # 화면 목적지
+                                )
+
+            # 4. 중앙 조준점 (Crosshair) 그리기
+            crosshair_size = 10
+            ctx.strokeStyle = "#00FF00" # 초록색 조준점
+            ctx.lineWidth = 2
+            # 가로선
+            ctx.beginPath()
+            ctx.moveTo(SCREEN_WIDTH/2 - crosshair_size, SCREEN_HEIGHT/2)
+            ctx.lineTo(SCREEN_WIDTH/2 + crosshair_size, SCREEN_HEIGHT/2)
+            ctx.stroke()
+            # 세로선
+            ctx.beginPath()
+            ctx.moveTo(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - crosshair_size)
+            ctx.lineTo(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + crosshair_size)
+            ctx.stroke()
+
+            # 5. 총(무기) 그리기
+            if weapon_img.complete and weapon_img.height > 0:
+                # 발사 시 반동 계산 (flash_frames가 있을 때 위로 이동)
+                recoil = game.flash_frames * 10 
+                
+                # 이미지 크기 설정 (화면 비율에 맞게 조정)
+                w_width = SCREEN_WIDTH * 0.32
+                w_height = w_width * (weapon_img.height / weapon_img.width)
+                
+                # 위치 설정: 우측 하단 (반동 시 recoil만큼 Y축 위로 이동)
+                pos_x = SCREEN_WIDTH - w_width - 60
+                pos_y = SCREEN_HEIGHT - w_height + recoil
+                
+                ctx.drawImage(weapon_img, pos_x, pos_y, w_width, w_height)
+
+            # 6. 사격 피드백 (화면 번쩍임)
+            if game.flash_frames > 0:
+                ctx.fillStyle = f"rgba(255, 255, 255, {game.flash_frames / 5})"
+                ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+                game.flash_frames -= 1 # 값 감소
+
+        def main_loop(*args):
+            game.update_player(pressed_keys)
+            
+            # 스페이스바 입력 처리
+            if ' ' in pressed_keys:
+                # 연속 사격 방지를 위해 키를 즉시 제거 (단발 사격)
+                pressed_keys.remove(' ')
+                hit = game.attack_monster()
+                game.flash_frames = 5 # game 객체의 변수 수정
+
+            draw_scene()
+            js.requestAnimationFrame(create_proxy(main_loop))
+
+        main_loop()
+    </py-script>
+</body>
+</html>
