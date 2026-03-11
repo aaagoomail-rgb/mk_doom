@@ -2,28 +2,36 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Python DOOM Project</title>
+    <title>Python DOOM Project - Final</title>
     <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
     <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
     <style>
-        /* body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        canvas { border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); } */
-        #ui-container { position: absolute; display: none; flex-direction: column; align-items: center; }
-        #restart-btn { 
-        padding: 15px 30px; font-size: 20px; cursor: pointer;
-        background: #f00; color: white; border: none; font-weight: bold;
+        body { margin: 0; background-color: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+        #game-wrapper { position: relative; box-shadow: 0 0 50px rgba(0,0,0,0.8); border: 2px solid #333; }
+        canvas { display: block; background-color: #000; }
+        
+        /* UI 레이어 최적화 */
+        #ui-container { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: none; flex-direction: column; align-items: center; justify-content: center; 
+            background: rgba(0, 0, 0, 0.85); z-index: 100; 
         }
+        #status-text { font-family: 'Arial Black', sans-serif; font-size: 70px; margin-bottom: 30px; letter-spacing: -2px; }
+        #restart-btn { 
+            padding: 18px 45px; font-size: 22px; cursor: pointer; 
+            background: #b00; color: white; border: 2px solid #fff; 
+            font-weight: bold; text-transform: uppercase; transition: 0.2s;
+        }
+        #restart-btn:hover { background: #f00; transform: scale(1.05); }
     </style>
 </head>
-<body style="margin: 0; background-color: #111; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
-    <div id="game-wrapper" style="position: relative;">
-    <canvas id="gameCanvas" width="1024" height="600" style="display: block; box-shadow: 0 0 20px rgba(0,0,0,0.5);"></canvas>
-    <!-- 권장 width=640 , height=480 -->
-
-    <div id="ui-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.7); z-index: 10;">
-        <h1 id="status-text" style="font-family: 'Arial Black', sans-serif; font-size: 80px; text-shadow: 4px 4px #000; margin-bottom: 20px;"></h1>
-        <button id="restart-btn" style="padding: 20px 50px; font-size: 24px; cursor: pointer; background: #900; color: white; border: 3px solid #fff; font-weight: bold; transition: transform 0.2s;">다시 시작</button>
-    </div>
+<body>
+    <div id="game-wrapper">
+        <canvas id="gameCanvas" width="1024" height="600"></canvas>
+        <div id="ui-container">
+            <h1 id="status-text"></h1>
+            <button id="restart-btn">다시 시작 (RESTART)</button>
+        </div>
     </div>
 
     <py-config>
@@ -33,12 +41,24 @@
 
     <py-script>
         import js, math
-        from pyodide.ffi import create_proxy  # 에러 해결을 위한 핵심 임포트
+        from pyodide.ffi import create_proxy
         from engine import DoomGame, SCREEN_WIDTH, SCREEN_HEIGHT, CASTED_RAYS
 
+        # 전역 객체 초기화
         ui_container = js.document.getElementById("ui-container")
         status_text = js.document.getElementById("status-text")
         restart_btn = js.document.getElementById("restart-btn")
+        canvas = js.document.getElementById("gameCanvas")
+        ctx = canvas.getContext("2d")
+        
+        # 이미지 로드 (캐싱)
+        monster_img = js.Image.new()
+        monster_img.src = "images/doom_imp.png"
+        weapon_img = js.Image.new()
+        weapon_img.src = "images/pistol.png"
+
+        game = DoomGame()
+        pressed_keys = set()
 
         def restart_game(event):
             game.init_game()
@@ -46,171 +66,140 @@
 
         restart_btn.onclick = create_proxy(restart_game)
 
-        
-        # 0. 이미지 로드 설정
-        monster_img = js.Image.new()
-        monster_img.src = "images/doom_imp.png" # 실제 이미지 파일 경로
-        weapon_img = js.Image.new()
-        weapon_img.src = "images/pistol.png" # 실제 총 이미지 파일 경로
-
-        canvas = js.document.getElementById("gameCanvas")
-        ctx = canvas.getContext("2d")
-        game = DoomGame()
-        pressed_keys = set()
-        
-        def on_keydown(event):
-            pressed_keys.add(event.key.lower())
+        def on_keydown(event): pressed_keys.add(event.key.lower())
         def on_keyup(event):
-            if event.key.lower() in pressed_keys:
-                pressed_keys.remove(event.key.lower())
+            if event.key.lower() in pressed_keys: pressed_keys.remove(event.key.lower())
 
         js.window.addEventListener("keydown", create_proxy(on_keydown))
         js.window.addEventListener("keyup", create_proxy(on_keyup))
 
-        <!-- def draw_scene(): -->
-        
         def draw_scene():
-        
-        # 프록시 생성 후 이벤트 리스너 등록
+            # 1. 배경 (그라데이션 효과 대신 단순화하여 성능 확보)
+            ctx.fillStyle = "#1a1a1a" # 천장
+            ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT // 2)
+            ctx.fillStyle = "#333" # 바닥
+            ctx.fillRect(0, SCREEN_HEIGHT // 2, SCREEN_WIDTH, SCREEN_HEIGHT // 2)
 
-            # 1. [가장 밑바닥] 배경 (천장과 바닥)
-            ctx.fillStyle = "#222" # 천장
-            ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT / 2)
-            ctx.fillStyle = "#444" # 바닥
-            ctx.fillRect(0, SCREEN_HEIGHT / 2, SCREEN_WIDTH, SCREEN_HEIGHT / 2)
-
-            # 2. [중간 레이어] 레이캐스팅 벽 그리기 및 거리(Z-Buffer) 기록
+            # 2. 레이캐스팅 벽 렌더링
             wall_results = game.cast_rays()
-            z_buffer = [] # 각 광선(Ray)의 거리를 저장
-            ray_width = SCREEN_WIDTH / CASTED_RAYS
+            z_buffer = []
+            # 소수점 오차를 줄이기 위해 정확한 폭 계산
+            ray_step = SCREEN_WIDTH / CASTED_RAYS
             
             for i, wall in enumerate(wall_results):
-                wall_height = wall['height']
-                z_buffer.append(wall['dist']) # 거리 저장
+                dist = wall['dist']
+                z_buffer.append(dist)
+                h = wall['height']
                 
-                brightness = int(255 * (1 - min(wall_height / SCREEN_HEIGHT, 1)))
-                ctx.fillStyle = f"rgb({brightness}, {brightness}, {brightness})"
-                ctx.fillRect(i * ray_width, (SCREEN_HEIGHT - wall_height) / 2, ray_width + 1, wall_height)
+                # 거리에 따른 그림자 효과
+                shade = min(180, dist * 0.4)
+                color = int(200 - shade)
+                ctx.fillStyle = f"rgb({color}, {color}, {color})"
 
-            # 3. [가장 위 레이어] 몬스터 이미지 렌더링 (가려짐 처리)
-            # 벽이 모두 그려진 후에 그 위에 몬스터를 덧칠합니다.
-            monsters = game.get_sprites_data()
-            for m in monsters:
-                # 이미지 로드가 완료되었고, 높이가 0이 아닐 때만 실행
-                if monster_img.complete and monster_img.height > 0:
-                    m_dist = m['d'] - 0.5
-                    m_x = m['x']
+                # 핵심: ray_width에 +1.2 정도를 더해 인접한 벽끼리 미세하게 겹치게 하여 
+                # 계단 현상과 흰 선(틈새)을 동시에 방지 -> 픽셀이 겹치도록 보정
+                ctx.fillRect(i * ray_step - 0.5, (SCREEN_HEIGHT - h) // 2, ray_step + 1.2, h)
+
+            # 3. 몬스터 렌더링 (Z-Buffer 최적화 검사)
+            if monster_img.complete and monster_img.height > 0:
+                monsters = game.get_sprites_data()
+                for m in monsters:
+                    m_dist = m['d']
                     m_h = m['h']
+                    m_x = m['x']
                     
-                    # 이미지 가로 세로 비율 유지 (보통 몬스터는 높이가 너비보다 큼)
-                    sprite_width = m_h * (monster_img.width / monster_img.height)
-                    start_x = int(m_x - sprite_width / 2)
-                    end_x = int(m_x + sprite_width / 2)
+                    aspect = monster_img.width / monster_img.height
+                    m_w = m_h * aspect
+                    
+                    start_x = int(m_x - m_w / 2)
+                    
+                    # 최적화: 몬스터가 화면 밖에 있으면 스킵
+                    if start_x + m_w < 0 or start_x > SCREEN_WIDTH: continue
 
-                    # 세로 줄 단위 Z-Buffer 검사
-                    for stripe in range(start_x, end_x):
-                        ray_idx = int(stripe / (SCREEN_WIDTH / CASTED_RAYS))
-                        if 0 <= ray_idx < len(z_buffer):
-                            if z_buffer[ray_idx] > m_dist:
-                                # 이미지의 특정 부분만 잘라서 캔버스에 그리기
-                                # drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
-                                src_x = (stripe - start_x) * (monster_img.width / sprite_width)
-                                
+                    # 몬스터의 세로 줄 단위로 가려짐 검사 후 그리기
+                    for j in range(int(m_w)):
+                        screen_x = start_x + j
+                        if 0 <= screen_x < SCREEN_WIDTH:
+                            # 레이캐스팅 인덱스 계산
+                            ray_idx = int(screen_x / ray_step)
+                            if ray_idx < len(z_buffer) and z_buffer[ray_idx] > m_dist:
+                                src_x = j * (monster_img.width / m_w)
                                 ctx.drawImage(
-                                    monster_img,
-                                    src_x, 0, 1, monster_img.height, # 원본 이미지 소스 (1픽셀 폭)
-                                    stripe, (SCREEN_HEIGHT - m_h) / 2, 1, m_h # 화면 목적지
+                                    monster_img, src_x, 0, 1, monster_img.height,
+                                    screen_x, (SCREEN_HEIGHT - m_h) // 2, 1, m_h
                                 )
 
-            # 4. 중앙 조준점 (Crosshair) 그리기
-            crosshair_size = 10
-            ctx.strokeStyle = "#00FF00" # 초록색 조준점
-            ctx.lineWidth = 2
-            # 가로선
+            # 4. 조준점
+            ctx.strokeStyle = "#0f0"; ctx.lineWidth = 2
             ctx.beginPath()
-            ctx.moveTo(SCREEN_WIDTH/2 - crosshair_size, SCREEN_HEIGHT/2)
-            ctx.lineTo(SCREEN_WIDTH/2 + crosshair_size, SCREEN_HEIGHT/2)
-            ctx.stroke()
-            # 세로선
-            ctx.beginPath()
-            ctx.moveTo(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - crosshair_size)
-            ctx.lineTo(SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + crosshair_size)
+            ctx.moveTo(SCREEN_WIDTH/2-10, SCREEN_HEIGHT/2); ctx.lineTo(SCREEN_WIDTH/2+10, SCREEN_HEIGHT/2)
+            ctx.moveTo(SCREEN_WIDTH/2, SCREEN_HEIGHT/2-10); ctx.lineTo(SCREEN_WIDTH/2, SCREEN_HEIGHT/2+10)
             ctx.stroke()
 
-            # 5. 총(무기) 그리기
-            if weapon_img.complete and weapon_img.height > 0:
-                # 발사 시 반동 계산 (flash_frames가 있을 때 위로 이동)
-                recoil = game.flash_frames * 10 
+            # 4-1. 총알 부족 메시지 (조준점 바로 위 배치)
+            if game.ammo <= 0:
+                ctx.fillStyle = "#ff0000" # 붉은색 경고
+                ctx.font = "bold 20px Arial"
+                ctx.textAlign = "center"
+                # 조준점 중앙(SCREEN_WIDTH/2)에서 약간 위(SCREEN_HEIGHT/2 - 20)에 배치
+                ctx.fillText("NO AMMO", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 25)
 
-                # --- 뷰 보빙(View Bobbing) 계산 ---
-                # math.sin을 사용하여 위아래로 흔들림 (기본 위치 기준)
-                bob_y = math.sin(game.walk_timer) * 8 
-                # math.cos를 사용하여 양옆으로 흔들림
-                bob_x = math.cos(game.walk_timer * 0.5) * 5
+            # 5. 무기 & 뷰 보빙
+            if weapon_img.complete:
+                recoil = game.flash_frames * 12
+                bob_y = math.sin(game.walk_timer) * 10
+                bob_x = math.cos(game.walk_timer * 0.5) * 6
                 
-                # 이미지 크기 설정 (화면 비율에 맞게 조정)
-                w_width = SCREEN_WIDTH * 0.256
-                w_height = w_width * (weapon_img.height / weapon_img.width)
+                w_w = SCREEN_WIDTH * 0.25 # 무기 크기 조절
+                w_h = w_w * (weapon_img.height / weapon_img.width)
                 
-                # 위치 설정: 우측 하단 (반동 시 recoil만큼 Y축 위로 이동)
-                pos_x = (SCREEN_WIDTH - w_width - 150) + bob_x
-                pos_y = (SCREEN_HEIGHT - w_height + 10) + recoil + bob_y
-                
-                ctx.drawImage(weapon_img, pos_x, pos_y, w_width, w_height)
+                ctx.drawImage(weapon_img, 
+                    (SCREEN_WIDTH - w_w) / 2 + 150 + bob_x, 
+                    SCREEN_HEIGHT - w_h + 20 + recoil + bob_y, 
+                    w_w, w_h)
 
-            # 6. UI 시스템 (좌측 상단)
-            ctx.fillStyle = "white"
-            ctx.font = "20px Arial"
-            ctx.textAlign = "left"
+            # 6. UI (텍스트)
+            ctx.fillStyle = "#fff"; ctx.font = "bold 22px Arial"; ctx.textAlign = "left"
+            ctx.fillText(f"❤️ HEALTH: {game.player_health}", 30, 45)
+
+            # 몬스터 체력 요약 (리스트가 너무 길어지는 것 방지)
+            alive_count = sum(1 for m in game.monsters if m.is_alive)
+            ctx.fillText(f"👾 MONSTERS LEFT: {alive_count}", 30, 85)
+
+            # 좌측 하단 총알 UI 표시
+            # 화면 높이(SCREEN_HEIGHT)에서 약 40px 위 지점
+            ctx.fillStyle = "#ffd700" # 총알은 황금색으로 강조
+            ctx.fillText(f"🔫 AMMO: {game.ammo}", 30, SCREEN_HEIGHT - 40)
             
-            # 플레이어 라이프 출력
-            ctx.fillText(f"PLAYER LIFE: {game.player_health}", 20, 30)
-            
-            # 살아있는 몬스터들의 라이프 동적 출력
-            y_offset = 60
-            for i, m in enumerate(game.monsters):
-                if m.is_alive:
-                    ctx.fillText(f"MONSTER {i+1} LIFE: {m.health}", 20, y_offset)
-                    y_offset += 30
-
-            # 7. 피격 효과 (붉은색 번쩍임)
+            # 7. 피드백 효과
             if game.damage_frames > 0:
-                ctx.fillStyle = f"rgba(255, 0, 0, {game.damage_frames / 10})"
+                ctx.fillStyle = f"rgba(255, 0, 0, {game.damage_frames / 15})"
                 ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
                 game.damage_frames -= 1
-            
-            # 8. 사격 피드백 (화면 번쩍임)
             if game.flash_frames > 0:
                 ctx.fillStyle = f"rgba(255, 255, 255, {game.flash_frames / 5})"
                 ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
-                game.flash_frames -= 1 # 값 감소
+                game.flash_frames -= 1
 
-            # 게임 상태에 따른 UI 노출
+            # 8. 게임 상태 UI 트리거
             if game.game_state != "PLAYING":
                 ui_container.style.display = "flex"
-                # 캔버스 중앙에 위치시키기 위해 좌표 계산
-                <!-- ui_container.style.left = f"{js.window.innerWidth/2 - 100}px"
-                ui_container.style.top = f"{js.window.innerHeight/2 - 50}px" -->
-        
                 if game.game_state == "GAMEOVER":
-                    status_text.innerText = "GAME OVER"
-                    status_text.style.color = "red"
-                elif game.game_state == "CLEAR":
-                    status_text.innerText = "MISSION CLEAR"
-                    status_text.style.color = "gold"
+                    status_text.innerText = "YOU DIED"; status_text.style.color = "#f00"
+                else:
+                    status_text.innerText = "MISSION COMPLETE"; status_text.style.color = "#ff0"
 
         def main_loop(*args):
-            # 게임이 진행 중일 때만 업데이트 호출
             if game.game_state == "PLAYING":
                 game.update_player(pressed_keys)
-                
-                # 스페이스바 입력 처리
                 if ' ' in pressed_keys:
-                    # 연속 사격 방지를 위해 키를 즉시 제거 (단발 사격)
                     pressed_keys.remove(' ')
-                    hit = game.attack_monster()
-                    game.flash_frames = 5 # game 객체의 변수 수정
-
+                    if not game.ammo:
+                        game.flash_frames = 0
+                        print("No Ammo!")
+                    else:
+                        game.flash_frames = 5
+                    game.attack_monster()
             draw_scene()
             js.requestAnimationFrame(create_proxy(main_loop))
 

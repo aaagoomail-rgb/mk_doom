@@ -1,0 +1,7 @@
+Doom Map Location Calculate
+
+Tile Size : 50
+Map 배열 크기 : 8(width) / 7(height)
+
+X loc : 0 ~ 400 (8 tiles X 50) -> 몬스터 반지름 15 고려
+y loc : 0  ~350 (7 tiles X 50)
