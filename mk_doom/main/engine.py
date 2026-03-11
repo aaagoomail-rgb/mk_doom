@@ -1,4 +1,4 @@
-import math
+import math, random
 
 # --- 설정 및 상수 (최적화) ---
 SCREEN_WIDTH = 1024
@@ -8,17 +8,44 @@ HALF_FOV = FOV / 2
 CASTED_RAYS = 256  # 해상도 대비 성능 균형점 권장 : 256
 STEP_ANGLE = FOV / CASTED_RAYS
 WALL_HEIGHT_FACTOR = 600 # 600 해상도에 맞춰 높이 상향
-MAX_DEPTH = 800    
+MAX_DEPTH = 1600    # 맵 크기에 따라 수치 상향. 시야로 바라보는 레이저가 진행하는 경로의 길이
 TILE_SIZE = 50
+ACTIVE_DISTANCE = 500 # Chunk 적용 상수. 약 10타일 거리 이내의 몬스터만 AI 작동
 
+# 1은 벽, 0은 통로
 MAP = [
-    [1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 1, 0, 1, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 0, 1, 1, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+    [1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
+    [1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,0,1,1,0,1,0,1,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,1,0,1,0,0,1,0,0,1,0,1],
+    [1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1],
+    [1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1],
+    [1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1],
+    [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,1],
+    [1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1],
+    [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,1],
+    [1,0,1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1],
+    [1,0,1,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1],
+    [1,0,1,0,1,0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1],
+    [1,0,0,0,1,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1],
+    [1,1,1,0,1,0,1,0,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1],
+    [1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,1],
+    [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+    [1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,1],
+    [1,0,1,0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1],
+    [1,0,1,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1],
+    [1,0,1,0,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+    [1,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+    [1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ]
 
 class Monster:
@@ -33,17 +60,47 @@ class DoomGame:
     def __init__(self):
         self.init_game()
 
+    def spawn_monsters_randomly(self, count):
+        """맵의 빈 공간을 찾아 지정된 수만큼 몬스터를 랜덤하게 배치"""
+        self.monsters = []
+        empty_tiles = []
+
+        # 1. 맵 전체를 순회하며 빈 공간(0)인 타일의 인덱스를 수집
+        for row_idx, row in enumerate(MAP):
+            for col_idx, tile in enumerate(row):
+                if tile == 0:
+                    # 플레이어 시작 지점(1,1) 근처에는 생성되지 않도록 예외 처리 가능
+                    if not (row_idx == 1 and col_idx == 1):
+                        empty_tiles.append((col_idx, row_idx))
+
+        # 2. 빈 타일 중 'count' 개수만큼 랜덤하게 선택
+        if len(empty_tiles) < count:
+            count = len(empty_tiles) # 빈 공간이 부족하면 최대치로 설정
+
+        selected_tiles = random.sample(empty_tiles, count)
+
+        # 3. 선택된 타일의 중앙 좌표로 몬스터 생성
+        for col, row in selected_tiles:
+            # 타일 좌표를 월드 좌표로 변환 (중앙 배치를 위해 + TILE_SIZE/2)
+            world_x = (col * TILE_SIZE) + (TILE_SIZE / 2)
+            world_y = (row * TILE_SIZE) + (TILE_SIZE / 2)
+            self.monsters.append(Monster(world_x, world_y))
+
     def init_game(self):
         # 시작지점 벽 생성 지점과 겹치지 않게 주의
         self.player_x = 75.0
         self.player_y = 75.0
         self.player_angle = 0
         self.player_health = 3
-        self.ammo = 10  # 총알 개수 초기 설정 (예: 20발)
-        self.monsters = [
-            Monster(175, 170), Monster(320, 80),
-            Monster(310, 280), Monster(75, 250) 
-        ]
+        self.ammo = 20  # 총알 개수 초기 설정 (예: 20발)
+        # self.monsters = [
+        #     Monster(175, 170), Monster(320, 80),
+        #     Monster(310, 280), Monster(75, 250) 
+        # ]
+
+        # 직접 좌표를 입력하는 대신 랜덤 함수 호출(n = 생성 몬스터 수)
+        self.spawn_monsters_randomly(8)
+
         self.damage_frames = 0
         self.damage_cooldown = 0
         self.flash_frames = 0
@@ -59,7 +116,7 @@ class DoomGame:
     def update_player(self, keys):
         if self.game_state != "PLAYING": return
         
-        move_speed = 2.0 # 해상도가 크다면 속도 높일것.
+        move_speed = 1.5 # 해상도가 크다면 속도 높일것.
         rot_speed = 0.06
         
         #회전 동작
@@ -95,20 +152,28 @@ class DoomGame:
         for m in self.monsters:
             if not m.is_alive: continue
             dx, dy = self.player_x - m.x, self.player_y - m.y
-            dist = math.sqrt(dx**2 + dy**2)
+            dist = dx**2 + dy**2 # 무거운 루트 연산 대신 제곱 연산 사용
 
-            # 플레이어 피격 판정
-            if dist < 30 and self.damage_cooldown == 0:
-                self.player_health -= 1
-                self.damage_frames = 10
-                self.damage_cooldown = 40
-                if self.player_health <= 0: self.game_state = "GAMEOVER"
+            # 1. 플레이어 피격 판정 (매우 가까울 때만)
+            if dist < 900: # 30의 제곱
+                if self.damage_cooldown == 0:
+                    self.player_health -= 1
+                    self.damage_frames = 10
+                    self.damage_cooldown = 40
+                    if self.player_health <= 0: self.game_state = "GAMEOVER"
 
-            # 몬스터 추격 AI
-            if dist > 35:
-                mx, my = (dx/dist) * 0.8, (dy/dist) * 0.8
-                if self.get_map_at(m.x + mx, m.y) == 0: m.x += mx
-                if self.get_map_at(m.x, m.y + my) == 0: m.y += my
+            # 2. 청크 로직: 일정 거리 안에 있을 때만 추격 AI 실행
+            if dist < ACTIVE_DISTANCE**2:
+                dist = math.sqrt(dist) # 여기서만 실제 거리 계산
+                # 몬스터 추격 AI
+                if dist > 35:
+                    mx, my = (dx/dist) * 0.8, (dy/dist) * 0.8
+                    if self.get_map_at(m.x + mx, m.y) == 0: m.x += mx
+                    if self.get_map_at(m.x, m.y + my) == 0: m.y += my
+            else:
+                # 활성 거리 밖에 있는 몬스터는 '대기 상태'
+                # 필요하다면 여기서 아주 가끔씩만 위치를 업데이트하는 '저사양 로직'을 넣을 수 있습니다.
+                pass
 
         if self.damage_cooldown > 0: self.damage_cooldown -= 1
         if all(not m.is_alive for m in self.monsters): self.game_state = "CLEAR"
@@ -147,10 +212,18 @@ class DoomGame:
 
     def get_sprites_data(self):
         sprite_results = []
+        # 렌더링 컷오프 거리 (MAX_DEPTH보다 조금 짧게 설정하여 자연스럽게 사라지게 함)
+        RENDER_DISTANCE = 1200
+
         for m in self.monsters:
             if not m.is_alive: continue
             dx, dy = m.x - self.player_x, m.y - self.player_y
-            dist = math.sqrt(dx**2 + dy**2)
+            dist = dx**2 + dy**2
+
+            # 너무 먼 몬스터는 계산 생략
+            if dist > RENDER_DISTANCE**2: continue
+            
+            dist = math.sqrt(dist)
             theta = math.atan2(dy, dx)
             gamma = theta - self.player_angle
             

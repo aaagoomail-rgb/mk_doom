@@ -5,3 +5,8 @@ Map 배열 크기 : 8(width) / 7(height)
 
 X loc : 0 ~ 400 (8 tiles X 50) -> 몬스터 반지름 15 고려
 y loc : 0  ~350 (7 tiles X 50)
+
+위치 계산 공식
+X = (열 x Tile_Size) + (Tile_Size/2)
+Y = (행 x Tile_Size) + (Tile_Size/2)
+# (Tile_Size/2) 는 생성된 캐릭터가 벽과 충돌하지 않기 위해 더해주는 값임.
