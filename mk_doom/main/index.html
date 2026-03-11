@@ -6,13 +6,25 @@
     <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
     <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
     <style>
-        body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        canvas { border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        /* body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        canvas { border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); } */
+        #ui-container { position: absolute; display: none; flex-direction: column; align-items: center; }
+        #restart-btn { 
+        padding: 15px 30px; font-size: 20px; cursor: pointer;
+        background: #f00; color: white; border: none; font-weight: bold;
+        }
     </style>
 </head>
-<body>
-    <canvas id="gameCanvas" width="1024" height="600"></canvas>
+<body style="margin: 0; background-color: #111; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
+    <div id="game-wrapper" style="position: relative;">
+    <canvas id="gameCanvas" width="1024" height="600" style="display: block; box-shadow: 0 0 20px rgba(0,0,0,0.5);"></canvas>
     <!-- 권장 width=640 , height=480 -->
+
+    <div id="ui-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.7); z-index: 10;">
+        <h1 id="status-text" style="font-family: 'Arial Black', sans-serif; font-size: 80px; text-shadow: 4px 4px #000; margin-bottom: 20px;"></h1>
+        <button id="restart-btn" style="padding: 20px 50px; font-size: 24px; cursor: pointer; background: #900; color: white; border: 3px solid #fff; font-weight: bold; transition: transform 0.2s;">다시 시작</button>
+    </div>
+    </div>
 
     <py-config>
         [[fetch]]
@@ -24,7 +36,18 @@
         from pyodide.ffi import create_proxy  # 에러 해결을 위한 핵심 임포트
         from engine import DoomGame, SCREEN_WIDTH, SCREEN_HEIGHT, CASTED_RAYS
 
-        # 1. 이미지 로드 설정
+        ui_container = js.document.getElementById("ui-container")
+        status_text = js.document.getElementById("status-text")
+        restart_btn = js.document.getElementById("restart-btn")
+
+        def restart_game(event):
+            game.init_game()
+            ui_container.style.display = "none"
+
+        restart_btn.onclick = create_proxy(restart_game)
+
+        
+        # 0. 이미지 로드 설정
         monster_img = js.Image.new()
         monster_img.src = "images/doom_imp.png" # 실제 이미지 파일 경로
         weapon_img = js.Image.new()
@@ -34,18 +57,22 @@
         ctx = canvas.getContext("2d")
         game = DoomGame()
         pressed_keys = set()
-
+        
         def on_keydown(event):
             pressed_keys.add(event.key.lower())
         def on_keyup(event):
             if event.key.lower() in pressed_keys:
                 pressed_keys.remove(event.key.lower())
 
-        # 프록시 생성 후 이벤트 리스너 등록
         js.window.addEventListener("keydown", create_proxy(on_keydown))
         js.window.addEventListener("keyup", create_proxy(on_keyup))
 
+        <!-- def draw_scene(): -->
+        
         def draw_scene():
+        
+        # 프록시 생성 후 이벤트 리스너 등록
+
             # 1. [가장 밑바닥] 배경 (천장과 바닥)
             ctx.fillStyle = "#222" # 천장
             ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT / 2)
@@ -158,15 +185,31 @@
                 ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
                 game.flash_frames -= 1 # 값 감소
 
+            # 게임 상태에 따른 UI 노출
+            if game.game_state != "PLAYING":
+                ui_container.style.display = "flex"
+                # 캔버스 중앙에 위치시키기 위해 좌표 계산
+                <!-- ui_container.style.left = f"{js.window.innerWidth/2 - 100}px"
+                ui_container.style.top = f"{js.window.innerHeight/2 - 50}px" -->
+        
+                if game.game_state == "GAMEOVER":
+                    status_text.innerText = "GAME OVER"
+                    status_text.style.color = "red"
+                elif game.game_state == "CLEAR":
+                    status_text.innerText = "MISSION CLEAR"
+                    status_text.style.color = "gold"
+
         def main_loop(*args):
-            game.update_player(pressed_keys)
-            
-            # 스페이스바 입력 처리
-            if ' ' in pressed_keys:
-                # 연속 사격 방지를 위해 키를 즉시 제거 (단발 사격)
-                pressed_keys.remove(' ')
-                hit = game.attack_monster()
-                game.flash_frames = 5 # game 객체의 변수 수정
+            # 게임이 진행 중일 때만 업데이트 호출
+            if game.game_state == "PLAYING":
+                game.update_player(pressed_keys)
+                
+                # 스페이스바 입력 처리
+                if ' ' in pressed_keys:
+                    # 연속 사격 방지를 위해 키를 즉시 제거 (단발 사격)
+                    pressed_keys.remove(' ')
+                    hit = game.attack_monster()
+                    game.flash_frames = 5 # game 객체의 변수 수정
 
             draw_scene()
             js.requestAnimationFrame(create_proxy(main_loop))
