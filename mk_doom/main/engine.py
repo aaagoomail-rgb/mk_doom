@@ -35,7 +35,7 @@ MAP = [
     [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1],
     [1,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,1],
     [1,0,1,0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1],
@@ -48,6 +48,16 @@ MAP = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ]
 
+class Item:
+    def __init__(self, x, y, item_type):
+        self.x = x
+        self.y = y
+        self.type = item_type  # "AMMO" 또는 "HEALTH"
+        self.is_active = True
+        self.radius = 20
+        # HTML의 이미지 ID를 저장
+        self.image_id = "img_ammo" if item_type == "AMMO" else "img_health"
+
 class Monster:
     def __init__(self, x, y):
         self.x = x
@@ -58,6 +68,8 @@ class Monster:
 
 class DoomGame:
     def __init__(self):
+        # 최대 체력을 상수로 관리 (나중에 아이템으로 늘릴 수도 있음)
+        self.MAX_HEALTH = 100
         self.init_game()
 
     def spawn_monsters_randomly(self, count):
@@ -91,7 +103,7 @@ class DoomGame:
         self.player_x = 75.0
         self.player_y = 75.0
         self.player_angle = 0
-        self.player_health = 3
+        self.player_health = self.MAX_HEALTH # 시작 시 풀 피(100)
         self.ammo = 20  # 총알 개수 초기 설정 (예: 20발)
         # self.monsters = [
         #     Monster(175, 170), Monster(320, 80),
@@ -101,11 +113,30 @@ class DoomGame:
         # 직접 좌표를 입력하는 대신 랜덤 함수 호출(n = 생성 몬스터 수)
         self.spawn_monsters_randomly(8)
 
+        #아이템 생성 초기화 부
+        self.items = []
+        self.spawn_items_randomly(10) # 아이템 개수
+
         self.damage_frames = 0
         self.damage_cooldown = 0
         self.flash_frames = 0
         self.walk_timer = 0
         self.game_state = "PLAYING"
+
+    def spawn_items_randomly(self, count):
+        empty_tiles = []
+        for r, row in enumerate(MAP):
+            for c, tile in enumerate(row):
+                if tile == 0 and not (r == 1 and c == 1):
+                    empty_tiles.append((c, r))
+        
+        selected = random.sample(empty_tiles, min(count, len(empty_tiles)))
+        for col, row in selected:
+            # 반은 총알, 반은 회복 아이템으로 설정
+            itype = "AMMO" if random.random() > 0.5 else "HEALTH"
+            wx = col * 50 + 25
+            wy = row * 50 + 25
+            self.items.append(Item(wx, wy, itype))
 
     def get_map_at(self, x, y):
         col, row = int(x / TILE_SIZE), int(y / TILE_SIZE)
@@ -155,9 +186,9 @@ class DoomGame:
             dist = dx**2 + dy**2 # 무거운 루트 연산 대신 제곱 연산 사용
 
             # 1. 플레이어 피격 판정 (매우 가까울 때만)
-            if dist < 900: # 30의 제곱
+            if dist < 900: # 30의 제곱 -> 몬스터의 marzin값 고려하여 거리가 너무 가까운 것 같으면 값 증가
                 if self.damage_cooldown == 0:
-                    self.player_health -= 1
+                    self.player_health -= 20 # 플레이어 체력 100%에 대한 N% 데미지 값
                     self.damage_frames = 10
                     self.damage_cooldown = 40
                     if self.player_health <= 0: self.game_state = "GAMEOVER"
@@ -166,10 +197,24 @@ class DoomGame:
             if dist < ACTIVE_DISTANCE**2:
                 dist = math.sqrt(dist) # 여기서만 실제 거리 계산
                 # 몬스터 추격 AI
-                if dist > 35:
+                if dist > 35: # 플레이어와의 거리를 고려
                     mx, my = (dx/dist) * 0.8, (dy/dist) * 0.8
                     if self.get_map_at(m.x + mx, m.y) == 0: m.x += mx
                     if self.get_map_at(m.x, m.y + my) == 0: m.y += my
+
+                    # --- 몬스터 벽 충돌 방지 ---
+                    # 몬스터의 반지름(약 12~15px)을 고려하여 이동 가능 여부 체크
+                    m_margin = 20 # -> 벽 충돌 판정을 최대한 완화하기 위해 값 올림.
+                    
+                    # X축 이동 검사 (미끄러짐 적용)
+                    next_x_margin = mx + (m_margin if mx > 0 else -m_margin)
+                    if self.get_map_at(m.x + next_x_margin, m.y) == 0:
+                        m.x += mx
+                    
+                    # Y축 이동 검사 (미끄러짐 적용)
+                    next_y_margin = my + (m_margin if my > 0 else -m_margin)
+                    if self.get_map_at(m.x, m.y + next_y_margin) == 0:
+                        m.y += my
             else:
                 # 활성 거리 밖에 있는 몬스터는 '대기 상태'
                 # 필요하다면 여기서 아주 가끔씩만 위치를 업데이트하는 '저사양 로직'을 넣을 수 있습니다.
@@ -177,6 +222,23 @@ class DoomGame:
 
         if self.damage_cooldown > 0: self.damage_cooldown -= 1
         if all(not m.is_alive for m in self.monsters): self.game_state = "CLEAR"
+
+    def update_items(self):
+        """플레이어와 아이템의 충돌 판정"""
+        for item in self.items:
+            if not item.is_active: continue
+            
+            dx = self.player_x - item.x
+            dy = self.player_y - item.y
+            dist = math.sqrt(dx**2 + dy**2)
+            
+            if dist < 30: # 습득 범위
+                if item.type == "AMMO":
+                    self.ammo += 10
+                elif item.type == "HEALTH":
+                    self.player_health = min(self.MAX_HEALTH, self.player_health + 30)
+                
+                item.is_active = False # 아이템 획득 처리
 
     def cast_rays(self):
         """DDA 알고리즘을 적용한 고성능 레이캐스팅 -> DDA 생략하고 정밀도를 더 높인 레이캐스팅"""
