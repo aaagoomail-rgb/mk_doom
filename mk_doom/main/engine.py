@@ -202,6 +202,9 @@ class DoomGame:
             if m.is_alert:
                 # 실제 이동을 위해 정확한 거리(루트) 계산 (한 번만 수행)
                 dist = math.sqrt(dist_sq)
+
+                # mx, my를 미리 0으로 초기화하여 에러 방지
+                mx, my = 0, 0
                 
                 # 플레이어와 겹치지 않게 일정 거리(35px) 유지
                 if dist > 35:

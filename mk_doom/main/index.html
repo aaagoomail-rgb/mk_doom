@@ -384,7 +384,7 @@
                 ctx.fillStyle = "#00ff00" # 그 외 녹색
 
             # 수치 옆에 간단한 체력 바(Bar) 생성.
-            ctx.fillRect(30, 55, health_percent * 1.5, 10)
+            ctx.fillRect(30, 55, health_percent * 2, 10) # ctx.fillRect(x, y, width, heigth) -> 체력바 크기 조절 참고
 
             # 남아있는 몬스터 수치
             alive_count = sum(1 for m in game.monsters if m.is_alive)
