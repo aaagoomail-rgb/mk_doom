@@ -62,7 +62,7 @@
     </py-config>
 
     <py-script>
-        import js, math
+        import js, math, time
         from pyodide.ffi import create_proxy
         from engine import DoomGame, SCREEN_WIDTH, SCREEN_HEIGHT, CASTED_RAYS, MAP, FOV, MAX_DEPTH
 
@@ -238,7 +238,7 @@
             mm_ctx.stroke()
 
         def draw_scene():
-            # Z-Buffer 및 화면 초기화 (최상단)
+            <!-- # Z-Buffer 및 화면 초기화 (최상단) -->
             global z_buffer
             z_buffer = [MAX_DEPTH] * SCREEN_WIDTH            
 
@@ -258,10 +258,11 @@
                 dist = wall['dist']
                 h = wall['height']
 
-                # 하나의 광선(ray)이 차지하는 화면 폭만큼 z_buffer를 채워줍니다.
+                <!-- # 하나의 광선(ray)이 차지하는 화면 폭만큼 z_buffer를 채워줍니다. -->
                 start_x = int(i * ray_step)
                 end_x = int((i + 1) * ray_step)
 
+                <!-- # z_buffer 계산 -->
                 for x in range(start_x, min(end_x, SCREEN_WIDTH)):
                     z_buffer[x] = dist
                 
@@ -278,7 +279,7 @@
             all_sprites = get_all_sprites()
             sprite_data = []
 
-            print(z_buffer[512])
+            <!-- # z_buffer 유효성 검사 만약 해당 값이 1600 에 고정된다면 거리값 계산 문제 ! print(z_buffer[512]) -->
 
             for s in all_sprites:
                 dx = s["x"] - game.player_x
@@ -314,13 +315,24 @@
                 # Z-Buffer 체크: 벽에 가려지는지 확인
                 if 0 <= idx < SCREEN_WIDTH:
                     if z_buffer[idx] > s["dist"]:
-                        sprite_size = (SCREEN_HEIGHT / s["dist"]) * 40
+                        <!-- # 타입에 따라 기본 크기(Scale) 분기. 아이템 크기 조절
+                        # 기존 40이었던 값을 ITEM일 때만 20~25 정도로 낮춥니다. -->
+                        if s["type"] == "ITEM":
+                            sprite_scale = 20  # 숫자가 작을수록 아이템이 작아집니다
+                            <!-- # bobbing 효과. math.sin(time.time() * float_speed) * float_height. -->
+                            bobbing = math.sin(time.time() * 5) * 10
+                            y_offset = 50 + bobbing    # 아이템이 작아진 만큼 바닥에 붙이려면 이 값을 키우세요
+                        else:
+                            sprite_scale = 40  # 몬스터는 기존 크기 유지
+                            y_offset = 20                    
+
+                        sprite_size = (SCREEN_HEIGHT / s["dist"]) * sprite_scale
 
                         # 이미지 그리기
                         ctx.drawImage(
                             s["img"], 
                             screen_x - sprite_size / 2, 
-                            (SCREEN_HEIGHT / 2) - sprite_size / 2 + 20, # 아이템은 바닥에 있게 +20
+                            (SCREEN_HEIGHT / 2) - sprite_size / 2 + y_offset, # 아이템과 바닥으로부터의 거리
                             sprite_size, 
                             sprite_size
                         )
